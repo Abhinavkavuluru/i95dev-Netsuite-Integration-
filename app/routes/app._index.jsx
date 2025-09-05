@@ -20,7 +20,11 @@ import prisma from "../db.server";
 import { Resend } from "resend";
 
 // Validation utility functions
-const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+function validateEmail(email) {
+  // Stricter regex: valid email with only letters allowed after final dot
+  const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return emailPattern.test(email);
+}
 const validateName = (name) =>
   /^[a-zA-Z\s'-]+$/.test(name || "") && name.trim().length >= 2;
 const validatePhone = (phoneNumber, countryCode) => {
@@ -128,7 +132,7 @@ export const action = async ({ request }) => {
     const resend = new Resend(process.env.RESEND_API_KEY);
     await resend.emails.send({
       from: "onboarding@resend.dev",
-      to: "info@i95dev.com",
+      to: "abhinav.kavuluru@i95dev.com",
       subject: "New Contact Form Submission",
       html: `
         <h2>New Contact Form Submission</h2>
