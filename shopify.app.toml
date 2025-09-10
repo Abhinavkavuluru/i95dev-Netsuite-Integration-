@@ -34,3 +34,5 @@ redirect_urls = [
 
 [pos]
 embedded = false
+
+[env]
