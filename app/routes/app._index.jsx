@@ -18,9 +18,14 @@ import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { Resend } from "resend";
+import { Client } from "@hubspot/api-client";
 
 // Validation utility functions
-const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+function validateEmail(email) {
+  // Stricter regex: valid email with only letters allowed after final dot
+  const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return emailPattern.test(email);
+}
 const validateName = (name) =>
   /^[a-zA-Z\s'-]+$/.test(name || "") && name.trim().length >= 2;
 const validatePhone = (phoneNumber, countryCode) => {
@@ -100,7 +105,10 @@ export const action = async ({ request }) => {
     return { success: false, errors, message: "Please fix the validation errors" };
   }
 
-  try {
+  // Helper function for fallback to Prisma + Resend
+  const fallbackToDatabase = async () => {
+    console.log("Falling back to database and email notification");
+    
     // Optional duplicate check
     const existing = await prisma.contactForm.findFirst({
       where: { email: email.trim().toLowerCase() },
@@ -108,12 +116,11 @@ export const action = async ({ request }) => {
     if (existing) {
       return {
         success: false,
-        message:
-          "A submission with this email already exists. Please use a different email or contact support.",
+        message: "A submission with this email already exists. Please use a different email or contact support.",
       };
     }
 
-    // Save
+    // Save to database
     await prisma.contactForm.create({
       data: {
         firstName: firstName.trim(),
@@ -124,7 +131,7 @@ export const action = async ({ request }) => {
       },
     });
 
-    // Email to i95Dev via Resend
+    // Send email notification
     const resend = new Resend(process.env.RESEND_API_KEY);
     await resend.emails.send({
       from: "onboarding@resend.dev",
@@ -142,8 +149,43 @@ export const action = async ({ request }) => {
     });
 
     return { success: true, message: "Form submitted successfully! Our team will contact you soon." };
+  };
+
+  try {
+    // Try HubSpot first if API key is available
+    if (process.env.HUBSPOT_API_KEY) {
+      try {
+        console.log("Attempting to create HubSpot contact");
+        const hubspotClient = new Client({ accessToken: process.env.HUBSPOT_API_KEY });
+        
+        // Create contact in HubSpot
+        const contactProperties = {
+          firstname: firstName.trim(),
+          lastname: lastName.trim(),
+          email: email.trim().toLowerCase(),
+          ...(phone && { phone: phone.trim() }),
+          // Store questions in notes field or create a custom property in HubSpot
+          hs_content_membership_notes: questions.trim()
+        };
+
+        await hubspotClient.crm.contacts.basicApi.create({
+          properties: contactProperties
+        });
+
+        console.log("HubSpot contact created successfully");
+        return { success: true, message: "Form submitted successfully! Our team will contact you soon." };
+      } catch (hubspotError) {
+        console.error("HubSpot creation failed, falling back to database:", hubspotError);
+        // Fall back to database and email
+        return await fallbackToDatabase();
+      }
+    } else {
+      console.log("No HubSpot API key found, using database fallback");
+      // No HubSpot API key, use database directly
+      return await fallbackToDatabase();
+    }
   } catch (error) {
-    // console.error("Form submission error:", error);
+    console.error("Form submission error:", error);
     return { success: false, message: "Failed to submit form. Please try again later." };
   }
 };
@@ -166,8 +208,6 @@ export default function Index() {
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [calReady, setCalReady] = useState(false);
-
-
 
   // Initialize Cal.com
   useEffect(() => {
@@ -290,7 +330,6 @@ export default function Index() {
     const error = validateField(field, formData[field]);
     setErrors((prev) => ({ ...prev, [field]: error }));
   };
-
 
   return (
     <Page>
