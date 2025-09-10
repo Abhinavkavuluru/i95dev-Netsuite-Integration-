@@ -157,7 +157,7 @@ export const action = async ({ request }) => {
       try {
         console.log("Attempting to create HubSpot contact");
         const hubspotClient = new Client({ accessToken: process.env.HUBSPOT_API_KEY });
-
+        
         // Create contact in HubSpot
         const contactProperties = {
           firstname: firstName.trim(),
@@ -208,8 +208,6 @@ export default function Index() {
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [calReady, setCalReady] = useState(false);
-
-
 
   // Initialize Cal.com
   useEffect(() => {
@@ -332,7 +330,6 @@ export default function Index() {
     const error = validateField(field, formData[field]);
     setErrors((prev) => ({ ...prev, [field]: error }));
   };
-
 
   return (
     <Page>
